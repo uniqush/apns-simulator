@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"io"
+	"time"
 )
 
 type apnsNotification struct {
@@ -123,10 +124,10 @@ func handleClient(conn net.Conn) {
 		}
 		// we don't need a good random generator. Even with mod is ok.
 		status = uint8(weakrand.Int() % 10)
-		fmt.Printf("Got a notifcation: %v. and the status is: %v\n", notif, status)
+		fmt.Printf("[%v] Got a notifcation: %v. and the status is: %v\n", time.Now(), notif, status)
 		if status > uint8(8) {
 			status = 255
-			fmt.Printf("Drop this connection\n")
+			fmt.Printf("[%v] Drop this connection\n", time.Now())
 			return
 		}
 		replyNotification(conn, status, notif.id)
@@ -156,7 +157,7 @@ func main() {
 		if err != nil {
 			fmt.Printf("Accept Error: %v\n", err)
 		}
-		fmt.Printf("Received connection from %v\n", client.RemoteAddr())
+		fmt.Printf("[%v] Received connection from %v\n", time.Now(), client.RemoteAddr())
 		go handleClient(client)
 	}
 }
