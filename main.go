@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"io"
 )
 
 type apnsNotification struct {
@@ -80,7 +81,7 @@ func readNotification(conn net.Conn) (notif *apnsNotification, err error) {
 		return
 	}
 	notif.payload = make([]byte, notif.payloadLen)
-	n, err = conn.Read(notif.payload)
+	n, err = io.ReadFull(conn, notif.payload)
 	if err != nil {
 		notif = nil
 		return
@@ -114,13 +115,12 @@ func replyNotification(conn net.Conn, status uint8, id uint32) error {
 func handleClient(conn net.Conn) {
 	defer conn.Close()
 	for {
-		fmt.Println("Waiting for notifcation..")
+		var status uint8
 		notif, err := readNotification(conn)
 		if err != nil {
 			fmt.Printf("Got an error: %v\n", err)
 			break
 		}
-		var status uint8
 		// we don't need a good random generator. Even with mod is ok.
 		status = uint8(weakrand.Int() % 10)
 		fmt.Printf("Got a notifcation: %v. and the status is: %v\n", notif, status)
