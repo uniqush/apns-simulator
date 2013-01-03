@@ -123,13 +123,26 @@ func handleClient(conn net.Conn) {
 			break
 		}
 		// we don't need a good random generator. Even with mod is ok.
-		status = uint8(weakrand.Int() % 10)
-		fmt.Printf("[%v] Got a notifcation: %v. and the status is: %v\n", time.Now(), notif, status)
-		if status > uint8(8) {
+		s := weakrand.Int() % 100
+
+		if s > 50 {
+			s -= 50
+			s /= 5
+		} else {
+			s = 0
+		}
+		status = uint8(s)
+		if status == uint8(0) {
+			if weakrand.Int() % 5 != 0 {
+				fmt.Printf("[%v] Got a notifcation: %v. It is successfully processed but will not be replied. I am a bad fruit\n", time.Now(), notif)
+				continue
+			}
+		} else if status > uint8(8) {
 			status = 255
 			fmt.Printf("[%v] Drop this connection\n", time.Now())
 			return
 		}
+		fmt.Printf("[%v] Got a notifcation: %v. and the status is: %v\n", time.Now(), notif, status)
 		replyNotification(conn, status, notif.id)
 	}
 }
