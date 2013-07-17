@@ -3,46 +3,91 @@ package main
 import (
 	"crypto/rand"
 	"crypto/tls"
-	"encoding/binary"
 	"fmt"
+	"github.com/uniqush/log"
 	"io"
 	weakrand "math/rand"
 	"net"
+	"os"
 	"time"
 )
 
-func handleClient(conn net.Conn) {
-	defer conn.Close()
-	for {
-		var status uint8
-		notif, err := readNotification(conn)
-		if err != nil {
-			fmt.Printf("Got an error: %v\n", err)
-			break
-		}
-		// we don't need a good random generator. Even with mod is ok.
-		s := weakrand.Int() % 100
+type APNSProcessor struct {
+	MinProcessingTime time.Duration
+	MaxProcessingTime time.Duration
 
-		if s > 50 {
-			s -= 50
-			s /= 5
-		} else {
-			s = 0
-		}
-		status = uint8(s)
-		if status == uint8(0) {
-			if weakrand.Int()%5 != 0 {
-				fmt.Printf("[%v] Got a notifcation: %v. It is successfully processed but will not be replied. I am a bad fruit\n", time.Now(), notif)
-				continue
-			}
-		} else if status > uint8(8) {
-			status = 255
-			fmt.Printf("[%v] Drop this connection\n", time.Now())
+	Simulator APNSSimulator
+	Conn      *APNSConn
+	Log       log.Logger
+
+	sendChan chan *APNSResponse
+}
+
+func NewAPNSProcessor(conn *APNSConn, logger log.Logger) *APNSProcessor {
+	ret := new(APNSProcessor)
+	ret.Conn = conn
+	ret.Log = logger
+	ret.sendChan = make(chan *APNSResponse)
+	return ret
+}
+
+func (self *APNSProcessor) sendingResponses(start chan bool) {
+	<-start
+	for res := range self.sendChan {
+		err := self.Conn.Reply(res)
+		if err != nil {
 			return
 		}
-		fmt.Printf("[%v] Got a notifcation: %v. and the status is: %v\n", time.Now(), notif, status)
-		replyNotification(conn, status, notif.id)
 	}
+}
+
+func (self *APNSProcessor) Process() {
+	if self.sendChan == nil {
+		self.sendChan = make(chan *APNSResponse)
+	}
+	if self.Conn == nil {
+		return
+	}
+	if self.Simulator == nil {
+		self.Simulator = &APNSNormalSimulator{0, 0}
+	}
+
+	ch := make(chan bool)
+	self.sendingResponses(ch)
+	ch <- true
+
+	defer self.Conn.Close()
+
+	for {
+		notif, err := self.Conn.ReadNotification()
+		if err != nil {
+			self.Log.Errorf("Got an error: %v\n", err)
+			return
+		}
+		res, err := self.Simulator.Reply(notif)
+		if err != nil {
+			self.Log.Errorf("Got an error: %v\n", err)
+			return
+		}
+
+		waitTime := self.MaxProcessingTime
+		if self.MaxProcessingTime != self.MinProcessingTime {
+			t := weakrand.Int63n(self.MaxProcessingTime.Nanoseconds() - self.MinProcessingTime.Nanoseconds())
+			t += self.MinProcessingTime.Nanoseconds()
+			waitTime = time.Duration(t)
+		}
+		go func(res *APNSResponse, wait time.Duration) {
+			time.Sleep(wait)
+			self.sendChan <- res
+		}(res, waitTime)
+	}
+}
+
+func handleClient(conn net.Conn, writer io.Writer, level int) {
+	logger := log.NewLogger(writer, fmt.Sprintf("[%v]", conn.RemoteAddr().String()), level)
+	c := &APNSConn{conn}
+	proc := NewAPNSProcessor(c, logger)
+	proc.Process()
 }
 
 func main() {
@@ -63,12 +108,13 @@ func main() {
 		fmt.Printf("Listen: %v\n", err)
 		return
 	}
+
 	for {
 		client, err := conn.Accept()
 		if err != nil {
 			fmt.Printf("Accept Error: %v\n", err)
 		}
 		fmt.Printf("[%v] Received connection from %v\n", time.Now(), client.RemoteAddr())
-		go handleClient(client)
+		go handleClient(client, os.Stderr, log.LOGLEVEL_DEBUG)
 	}
 }
