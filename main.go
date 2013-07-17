@@ -53,7 +53,7 @@ func (self *APNSProcessor) Process() {
 	}
 
 	ch := make(chan bool)
-	self.sendingResponses(ch)
+	go self.sendingResponses(ch)
 	ch <- true
 
 	defer self.Conn.Close()
@@ -61,9 +61,10 @@ func (self *APNSProcessor) Process() {
 	for {
 		notif, err := self.Conn.ReadNotification()
 		if err != nil {
-			self.Log.Errorf("Got an error: %v\n", err)
+			self.Log.Errorf("Got an error: %v", err)
 			return
 		}
+		self.Log.Infof("Received notification: %v", notif)
 		res, err := self.Simulator.Reply(notif)
 		if err != nil {
 			self.Log.Errorf("Got an error: %v\n", err)
