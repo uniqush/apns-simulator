@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 )
 
 type APNSNotificaton struct {
@@ -18,8 +20,10 @@ type APNSNotificaton struct {
 }
 
 func (self *APNSNotificaton) String() string {
-	return fmt.Sprintf("command=%v\nid=%v\nexpiry=%v\ntoken=%v\n,payload=%v\n",
-		self.command, self.id, self.expiry, self.devToken, string(self.payload))
+	token := hex.EncodeToString(self.devToken)
+	token = strings.ToLower(token)
+	return fmt.Sprintf("command=%v; id=%v; expiry=%v; token=%v; payload=%v",
+		self.command, self.id, self.expiry, token, string(self.payload))
 }
 
 type APNSResponse struct {
