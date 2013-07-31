@@ -86,10 +86,17 @@ func (self *APNSProcessor) Process() {
 	}
 }
 
-func clientProcessor(conn net.Conn, writer io.Writer, level int) *APNSProcessor {
+func clientProcessor(conn net.Conn, writer io.Writer, level int, factory SimulatorFactory) *APNSProcessor {
 	logger := log.NewLogger(writer, fmt.Sprintf("[%v]", conn.RemoteAddr().String()), level)
 	c := &APNSConn{conn}
 	proc := NewAPNSProcessor(c, logger)
+	if factory != nil {
+		var err error
+		proc.Simulator, err = factory.MakeSimulator()
+		if err != nil {
+			proc.Simulator = nil
+		}
+	}
 	return proc
 }
 
@@ -103,7 +110,7 @@ func strToUInt8(args ...string) (val []uint8, err error) {
 		j, err = strconv.ParseUint(a, 10, 8)
 		if err != nil {
 			val = nil
-			err = fmt.Errorf("invalid arg #%v: %v", i, err)
+			err = fmt.Errorf("invalid arg #%v: %v; it should be a positive integer <= 255", i+1, err)
 			return
 		}
 		val = append(val, uint8(j))
@@ -112,6 +119,20 @@ func strToUInt8(args ...string) (val []uint8, err error) {
 }
 
 var argSpecifyStatuses = flag.Bool("s", false, "specify the statuses")
+
+func getFactory() (sim SimulatorFactory, err error) {
+	if *argSpecifyStatuses {
+		var s []uint8
+		s, err = strToUInt8(flag.Args()...)
+		if err != nil {
+			return
+		}
+		sim = NewStatusSimulatorFactory(s...)
+	} else {
+		sim = NewNormalSimulatorFactory(0, 0)
+	}
+	return
+}
 
 func main() {
 	flag.Parse()
@@ -133,13 +154,19 @@ func main() {
 		return
 	}
 
+	factory, err := getFactory()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Wrong arguments: %v\n", err)
+		return
+	}
+
 	for {
 		client, err := conn.Accept()
 		if err != nil {
 			fmt.Printf("Accept Error: %v\n", err)
 		}
 		//fmt.Printf("[%v] Received connection from %v\n", time.Now(), client.RemoteAddr())
-		proc := clientProcessor(client, os.Stderr, log.LOGLEVEL_DEBUG)
+		proc := clientProcessor(client, os.Stderr, log.LOGLEVEL_DEBUG, factory)
 		go proc.Process()
 	}
 }
