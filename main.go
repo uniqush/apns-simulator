@@ -3,12 +3,14 @@ package main
 import (
 	"crypto/rand"
 	"crypto/tls"
+	"flag"
 	"fmt"
 	"github.com/uniqush/log"
 	"io"
 	weakrand "math/rand"
 	"net"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -84,14 +86,35 @@ func (self *APNSProcessor) Process() {
 	}
 }
 
-func handleClient(conn net.Conn, writer io.Writer, level int) {
+func clientProcessor(conn net.Conn, writer io.Writer, level int) *APNSProcessor {
 	logger := log.NewLogger(writer, fmt.Sprintf("[%v]", conn.RemoteAddr().String()), level)
 	c := &APNSConn{conn}
 	proc := NewAPNSProcessor(c, logger)
-	proc.Process()
+	return proc
 }
 
+func strToUInt8(args ...string) (val []uint8, err error) {
+	if len(args) == 0 {
+		return
+	}
+	val = make([]uint8, 0, len(args))
+	for i, a := range args {
+		var j uint64
+		j, err = strconv.ParseUint(a, 10, 8)
+		if err != nil {
+			val = nil
+			err = fmt.Errorf("invalid arg #%v: %v", i, err)
+			return
+		}
+		val = append(val, uint8(j))
+	}
+	return
+}
+
+var argSpecifyStatuses = flag.Bool("s", false, "specify the statuses")
+
 func main() {
+	flag.Parse()
 	keyFile := "key.pem"
 	certFile := "cert.pem"
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -115,7 +138,8 @@ func main() {
 		if err != nil {
 			fmt.Printf("Accept Error: %v\n", err)
 		}
-		fmt.Printf("[%v] Received connection from %v\n", time.Now(), client.RemoteAddr())
-		go handleClient(client, os.Stderr, log.LOGLEVEL_DEBUG)
+		//fmt.Printf("[%v] Received connection from %v\n", time.Now(), client.RemoteAddr())
+		proc := clientProcessor(client, os.Stderr, log.LOGLEVEL_DEBUG)
+		go proc.Process()
 	}
 }
