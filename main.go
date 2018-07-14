@@ -118,7 +118,7 @@ func strToUInt8(args ...string) (val []uint8, err error) {
 	return
 }
 
-var argSpecifyStatuses = flag.Bool("s", false, "specify the statuses")
+var argSpecifyStatuses = flag.Bool("s", false, "specify individual statuses as integers in the following command line arguments")
 
 func getFactory() (sim SimulatorFactory, err error) {
 	if *argSpecifyStatuses {
